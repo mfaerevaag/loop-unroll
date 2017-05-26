@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 2.8.8)
 
 project(RegAlloc)
 
+add_definitions(-DMAGIC_FUNC="${MAGIC_FUNC}")
+
 add_definitions("-std=c++11")
 
 find_package(LLVM REQUIRED CONFIG)

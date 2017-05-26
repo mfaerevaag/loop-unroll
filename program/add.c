@@ -8,7 +8,7 @@ uint64_t rdtsc()
     return ((uint64_t) hi << 32) | lo;
 }
 
-void func(int *a, int *b)
+void MAGIC_FUNC (int *a, int *b)
 {
     int x;
 
@@ -30,7 +30,7 @@ int main(void)
     b = 66;
 
     t0 = rdtsc();
-    func(&a, &b);
+    MAGIC_FUNC (&a, &b);
     t1 = rdtsc();
 
     printf("%zu\n", t1 - t0);

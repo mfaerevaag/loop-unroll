@@ -9,6 +9,7 @@ TARGET = RegAlloc
 
 PROG ?= add
 PROG-OPT ?= ${PROG}-opt
+PROG-FUNC = magic
 
 export
 
@@ -26,17 +27,16 @@ ${ODIR}:
 	mkdir -p ${ODIR}
 
 ${ODIR}/Makefile:
-	cd ${ODIR} && cmake ../${SDIR}
+	cd ${ODIR} && cmake -DMAGIC_FUNC=${PROG-FUNC} ../${SDIR}
 
 ${ODIR}/${TARGET}: ${ODIR} ${ODIR}/Makefile
 	${MAKE} --no-print-directory -C ${ODIR}
-
 
 # program
 
 # bytecode
 %.ll: ${PDIR}/%.c
-	${CC} -S -emit-llvm -o $@ $<
+	${CC} -DMAGIC_FUNC=${PROG-FUNC} -S -emit-llvm -o $@ $<
 
 # optimize
 ${PROG-OPT}.ll: ${PROG}.ll ${ODIR}/${TARGET}

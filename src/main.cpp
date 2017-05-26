@@ -17,10 +17,7 @@ namespace {
 
         bool runOnFunction(Function &F) override
         {
-            if (F.getName() != "func") return false;
-
-            errs() << "Func: ";
-            errs().write_escaped(F.getName()) << '\n';
+            if (F.getName() != MAGIC_FUNC) return false;
 
             // F.dump();
 
