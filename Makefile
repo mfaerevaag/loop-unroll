@@ -9,6 +9,7 @@ TARGET = RegAlloc
 
 PROG ?= add
 PROG-OPT ?= ${PROG}-opt
+PROG-BEST ?= ${PROG}-best
 PROG-FUNC = magic
 
 export
@@ -16,7 +17,7 @@ export
 
 .PHONY: all prog clean cleanprog
 
-.SECONDARY: ${PROG}.s ${PROG-OPT}.s
+.SECONDARY: ${PROG}.s ${PROG-OPT}.s ${PROG-BEST}.s
 
 all: ${ODIR}/${TARGET}
 
@@ -40,7 +41,11 @@ ${ODIR}/${TARGET}: ${ODIR} ${ODIR}/Makefile
 
 # optimize
 ${PROG-OPT}.ll: ${PROG}.ll ${ODIR}/${TARGET}
-	opt -load ${ODIR}/lib${TARGET}.so -${TARGET} -o $@ $< > /dev/null
+	opt -S -load ${ODIR}/lib${TARGET}.so -${TARGET} -o $@ $< > /dev/null
+
+# optimize
+${PROG-BEST}.ll: ${PROG}.ll ${ODIR}/${TARGET}
+	opt -S -O3 -o $@ $< > /dev/null
 
 # assemble
 %.s: %.ll
@@ -50,7 +55,7 @@ ${PROG-OPT}.ll: ${PROG}.ll ${ODIR}/${TARGET}
 %.out: %.s
 	${CC} -o $@ $<
 
-prog: ${PROG}.out ${PROG}-opt.out
+prog: ${PROG}.out ${PROG-OPT}.out ${PROG-BEST}.out
 
 
 # misc
