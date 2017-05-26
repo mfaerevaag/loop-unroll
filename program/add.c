@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdint.h>
 
 uint64_t rdtsc()
@@ -24,13 +25,16 @@ void MAGIC_FUNC (int *a, int *b)
 int main(void)
 {
     uint64_t t0, t1;
-    int a, b;
+    int *a, *b;
 
-    a = 33;
-    b = 66;
+    a = (int *) malloc(sizeof(int));
+    b = (int *) malloc(sizeof(int));
+
+    *a = 33;
+    *b = 66;
 
     t0 = rdtsc();
-    MAGIC_FUNC (&a, &b);
+    MAGIC_FUNC (a, b);
     t1 = rdtsc();
 
     printf("%zu\n", t1 - t0);
