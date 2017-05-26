@@ -1,15 +1,39 @@
-int func(int x)
+#include <stdio.h>
+#include <stdint.h>
+
+uint64_t rdtsc()
 {
-    int y;
+    unsigned int lo, hi;
+    __asm__ __volatile__("rdtsc" : "=a" (lo), "=d" (hi));
+    return ((uint64_t) hi << 32) | lo;
+}
 
-    y = x;
+void func(int *a, int *b)
+{
+    int x;
 
-    y = x + 3;
+    x = *a;
+    x = x + 7;
+    *a = x;
 
-    return y;
+    x = *b;
+    x = x + 7;
+    *b = x;
 }
 
 int main(void)
 {
-    return func(7);
+    uint64_t t0, t1;
+    int a, b;
+
+    a = 33;
+    b = 66;
+
+    t0 = rdtsc();
+    func(&a, &b);
+    t1 = rdtsc();
+
+    printf("%zu\n", t1 - t0);
+
+    return 0;
 }
