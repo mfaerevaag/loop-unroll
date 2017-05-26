@@ -17,10 +17,15 @@ struct RegAlloc : public FunctionPass
         errs() << "Func: ";
         errs().write_escaped(F.getName()) << '\n';
 
-        for (BasicBlock &blk : F) {
-            for (BasicBlock::iterator i = blk.begin(), e = blk.end(); i != e; ++i) {
-                errs() << *i << "\n";
-            }
+        // F.dump();
+
+        for (auto& B : F) {
+            B.dump();
+
+            // for (auto& I : B) {
+            //     errs() << "Instruction: ";
+            //     I.dump();
+            // }
         }
 
         return false;
