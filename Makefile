@@ -1,5 +1,5 @@
-CXX = clang
-CXXFLAGS =
+CC = clang
+CFLAGS =
 
 SDIR = src
 ODIR = build
@@ -7,12 +7,15 @@ PDIR = program
 
 TARGET = RegAlloc
 
-PROGRAM ?= add.c
+PROG ?= add
+PROG-OPT ?= ${PROG}-opt
 
 export
 
 
-.PHONY: all run clean opt
+.PHONY: all prog clean cleanprog
+
+.SECONDARY: ${PROG}.s ${PROG-OPT}.s
 
 all: ${ODIR}/${TARGET}
 
@@ -28,13 +31,32 @@ ${ODIR}/Makefile:
 ${ODIR}/${TARGET}: ${ODIR} ${ODIR}/Makefile
 	${MAKE} --no-print-directory -C ${ODIR}
 
+
+# program
+
+# bytecode
+%.ll: ${PDIR}/%.c
+	${CC} -S -emit-llvm -o $@ $<
+
+# optimize
+${PROG-OPT}.ll: ${PROG}.ll ${ODIR}/${TARGET}
+	opt -load ${ODIR}/lib${TARGET}.so -${TARGET} -o $@ $< > /dev/null
+
+# assemble
+%.s: %.ll
+	llc -o $@ $<
+
+# binary
+%.out: %.s
+	${CC} -o $@ $<
+
+prog: ${PROG}.out ${PROG}-opt.out
+
+
 # misc
 
-# opt: ${PDIR}/${PROGRAM} ${ODIR}/${TARGET}
-# 	opt -load ${ODIR}/lib${TARGET}.so -${TARGET} < ${PDIR}/${PROGRAM} > /dev/null
-
-run: ${PDIR}/${PROGRAM} ${ODIR}/${TARGET}
-	${CXX} ${CXXFLAGS} -Xclang -load -Xclang ${ODIR}/lib${TARGET}.so -o ${ODIR}/a.out ${PDIR}/${PROGRAM}
-
 clean:
-	rm -rf ${ODIR}/*
+	rm -rf ${ODIR}/* *.ll *.s *.out
+
+cleanprog:
+	rm -rf *.ll *.s *.out
