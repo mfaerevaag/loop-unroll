@@ -17,6 +17,7 @@ namespace {
 
         bool runOnFunction(Function &F) override
         {
+            if (F.getName() != "func") return false;
 
             errs() << "Func: ";
             errs().write_escaped(F.getName()) << '\n';
