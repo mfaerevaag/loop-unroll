@@ -5,7 +5,7 @@ SDIR = src
 ODIR = build
 PDIR = program
 
-TARGET = RegAlloc
+TARGET = CompArch
 
 PROG ?= add
 PROG-OPT ?= ${PROG}-opt
