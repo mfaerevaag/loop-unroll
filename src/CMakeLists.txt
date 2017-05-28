@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8.8)
 
-project(CompArch)
+project(LoopUnroll)
 
 add_definitions(-DMAGIC_FUNC="${MAGIC_FUNC}")
 
@@ -11,4 +11,4 @@ find_package(LLVM REQUIRED CONFIG)
 add_definitions(${LLVM_DEFINITIONS})
 include_directories(${LLVM_INCLUDE_DIRS})
 
-add_library(CompArch MODULE main.cpp)
+add_library(LoopUnroll MODULE main.cpp)

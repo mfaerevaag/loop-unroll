@@ -5,7 +5,7 @@ SDIR = src
 ODIR = build
 PDIR = program
 
-TARGET = CompArch
+TARGET = LoopUnroll
 
 PROG ?= add
 PROG-OPT ?= ${PROG}-opt

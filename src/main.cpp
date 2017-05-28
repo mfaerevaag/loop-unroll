@@ -1,7 +1,7 @@
 #include "llvm/PassSupport.h"
 
-#include "loop_unroll.cpp"
+#include "LoopUnrollPass.h"
 
 using namespace llvm;
 
-static RegisterPass<RegAlloc> X("RegAlloc", "Register Allocation", false, false);
+static RegisterPass<LoopUnrollPass> X("LoopUnrollPass", "Loop unrolling", false, false);
