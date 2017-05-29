@@ -4,4 +4,4 @@
 
 using namespace llvm;
 
-static RegisterPass<LoopUnroll> X("LoopUnroll", "Loop unrolling", false, false);
+static RegisterPass<LoopUnroll> X("LoopUnroll", "My loop unrolling", false, false);
