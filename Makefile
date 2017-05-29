@@ -5,19 +5,20 @@ SDIR = src
 ODIR = build
 PDIR = program
 
-TARGET = LoopUnroll
+TARGET = CompArch
+PASSNAME = LoopUnroll
 
-PROG ?= add
-PROG-OPT ?= ${PROG}-opt
-PROG-BEST ?= ${PROG}-best
-PROG-FUNC = magic
+PROG ?= loop
+PROGOPT ?= ${PROG}-opt
+PROGBEST ?= ${PROG}-best
+PROGFUNC = magic
 
 export
 
 
 .PHONY: all prog clean cleanprog
 
-.SECONDARY: ${PROG}.s ${PROG-OPT}.s ${PROG-BEST}.s
+.SECONDARY: ${PROG}.s ${PROGOPT}.s ${PROGBEST}.s
 
 all: ${ODIR}/${TARGET}
 
@@ -28,7 +29,7 @@ ${ODIR}:
 	mkdir -p ${ODIR}
 
 ${ODIR}/Makefile:
-	cd ${ODIR} && cmake -DMAGIC_FUNC=${PROG-FUNC} ../${SDIR}
+	cd ${ODIR} && cmake -DMAGIC_FUNC=${PROGFUNC} ../${SDIR}
 
 ${ODIR}/${TARGET}: ${ODIR} ${ODIR}/Makefile
 	${MAKE} --no-print-directory -C ${ODIR}
@@ -37,14 +38,14 @@ ${ODIR}/${TARGET}: ${ODIR} ${ODIR}/Makefile
 
 # bytecode
 %.ll: ${PDIR}/%.c
-	${CC} -DMAGIC_FUNC=${PROG-FUNC} -S -emit-llvm -o $@ $<
+	${CC} -DMAGIC_FUNC=${PROGFUNC} -S -emit-llvm -o $@ $<
 
 # optimize
-${PROG-OPT}.ll: ${PROG}.ll ${ODIR}/${TARGET}
-	opt -S -load ${ODIR}/lib${TARGET}.so -${TARGET} -o $@ $< > /dev/null
+${PROGOPT}.ll: ${PROG}.ll ${ODIR}/${TARGET}
+	opt -S -load ${ODIR}/lib${TARGET}.so -${PASSNAME} -o $@ $< > /dev/null
 
 # optimize
-${PROG-BEST}.ll: ${PROG}.ll ${ODIR}/${TARGET}
+${PROGBEST}.ll: ${PROG}.ll ${ODIR}/${TARGET}
 	opt -S -O3 -o $@ $< > /dev/null
 
 # assemble
@@ -55,7 +56,7 @@ ${PROG-BEST}.ll: ${PROG}.ll ${ODIR}/${TARGET}
 %.out: %.s
 	${CC} -o $@ $<
 
-prog: ${PROG}.out ${PROG-OPT}.out ${PROG-BEST}.out
+prog: ${PROG}.out ${PROGOPT}.out ${PROGBEST}.out
 
 
 # misc

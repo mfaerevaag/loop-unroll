@@ -4,12 +4,12 @@
 #include <llvm/Pass.h>
 #include <llvm/Analysis/LoopPass.h>
 
-class LoopUnrollPass : public llvm::LoopPass
+class LoopUnroll : public llvm::LoopPass
 {
  public:
     static char ID;
- LoopUnrollPass() : llvm::LoopPass(ID) {};
-    virtual void getAnalysisUsage(llvm::AnalysisUsage &AU) const;
+ LoopUnroll() : llvm::LoopPass(ID) {};
+    /* virtual void getAnalysisUsage(llvm::AnalysisUsage &AU) const; */
     virtual bool runOnLoop(llvm::Loop *L, llvm::LPPassManager &LPM);
     /* virtual const char *getPassName() const { return "LoopUnrollPass"; }; */
 };

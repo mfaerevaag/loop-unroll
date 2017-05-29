@@ -1,25 +1,10 @@
 #include "LoopUnrollPass.h"
 
-#if defined(HAVE_LLVM_IR_CONSTANTS_H)
-#include <llvm/IR/Constants.h>
-#elif defined(HAVE_LLVM_CONSTANTS_H)
-#include <llvm/Constants.h>
-#endif
-#if defined(HAVE_LLVM_IR_INSTRUCTIONS_H)
-#include <llvm/IR/Instructions.h>
-#elif defined(HAVE_LLVM_INSTRUCTIONS_H)
-#include <llvm/Instructions.h>
-#endif
-#include <llvm/Transforms/Utils/Cloning.h>
+#include "llvm/Pass.h"
+#include "llvm/Support/raw_ostream.h"
 
-void LoopUnrollPass::getAnalysisUsage(llvm::AnalysisUsage &AU) const{
-  llvm::LoopPass::getAnalysisUsage(AU);
-  AU.addRequired<DeclareAssumePass>();
-  AU.addPreserved<DeclareAssumePass>();
+bool LoopUnroll::runOnLoop(llvm::Loop *L, llvm::LPPassManager &LPM){
+    llvm::errs() << "Helloooooooooo\n";
 }
 
-bool LoopUnrollPass::runOnLoop(llvm::Loop *L, llvm::LPPassManager &LPM){
-    errs << "Helloooooooooo\n";
-}
-
-char LoopUnrollPass::ID = 0;
+char LoopUnroll::ID = 0;
