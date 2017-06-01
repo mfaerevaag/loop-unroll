@@ -53,10 +53,9 @@ static unsigned estimateLoopSize(const Loop *L)
     return size;
 }
 
-// RemapInstruction - Convert the instruction operands from referencing the
+// convert the instruction operands from referencing the
 // current values into those specified by ValueMap.
-//
-static inline void RemapInstruction(Instruction *I, ValueToValueMapTy &ValueMap)
+static inline void remapInstruction(Instruction *I, ValueToValueMapTy &ValueMap)
 {
     for (unsigned op = 0, E = I->getNumOperands(); op != E; ++op) {
         Value *Op = I->getOperand(op);
@@ -311,7 +310,7 @@ bool LoopUnroll::unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
         // Remap all instructions in the most recent iteration
         for (BasicBlock *NewBlock : NewBlocks) {
             for (Instruction &I : *NewBlock) {
-                ::RemapInstruction(&I, LastValueMap);
+                remapInstruction(&I, LastValueMap);
             }
 
             // The latch block exits the loop.  If there are any PHI nodes in the
