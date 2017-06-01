@@ -11,14 +11,17 @@
 
 using namespace llvm;
 
+
 // command line options
+
 static cl::opt<unsigned> UnrollThreshold ("my-unroll-threshold", cl::init(100), cl::Hidden,
                                           cl::desc("The cut-off point for automatic loop unrolling"));
 
 static cl::opt<unsigned> UnrollCount ("my-unroll-count", cl::init(0), cl::Hidden,
                                       cl::desc("Use this unroll count for all loops, for testing purposes"));
 
-char LoopUnroll::ID = 0;
+
+// helper functions
 
 static unsigned estimateLoopSize(const Loop *L)
 {
@@ -406,6 +409,11 @@ bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
         }
     }
 }
+
+
+// class functions
+
+char LoopUnroll::ID = 0;
 
 bool LoopUnroll::runOnLoop(Loop *L, LPPassManager &LPM)
 {
