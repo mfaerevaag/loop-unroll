@@ -9,6 +9,7 @@ TARGET = CompArch
 PASSNAME = my-loop-unroll
 
 PROG ?= loop
+PROGBASE ?= ${PROG}-base
 PROGOPT ?= ${PROG}-opt
 PROGBEST ?= ${PROG}-best
 PROGFUNC = magic
@@ -40,15 +41,17 @@ ${ODIR}/${TARGET}: ${ODIR} ${ODIR}/Makefile
 %.ll: ${PDIR}/%.c
 	${CC} -DMAGIC_FUNC=${PROGFUNC} -S -emit-llvm -o $@ $<
 
-# optimize
-${PROGOPT}.ll: ${PROG}.ll ${ODIR}/${TARGET}
-	opt -S -load ${ODIR}/lib${TARGET}.so \
--mem2reg -simplifycfg -loops -loop-simplify -loop-rotate \
--${PASSNAME} -o $@ $< > /dev/null
+# base
+${PROGBASE}.ll: ${PROG}.ll ${ODIR}/${TARGET}
+	opt -S -mem2reg -simplifycfg -loops -loop-simplify -loop-rotate -o $@ $< > /dev/null
 
 # optimize
-${PROGBEST}.ll: ${PROG}.ll ${ODIR}/${TARGET}
-	opt -S -O3 -o $@ $< > /dev/null
+${PROGOPT}.ll: ${PROGBASE}.ll ${ODIR}/${TARGET}
+	opt -S -load ${ODIR}/lib${TARGET}.so -${PASSNAME} -o $@ $< > /dev/null
+
+# optimize
+# ${PROGBEST}.ll: ${PROG}.ll ${ODIR}/${TARGET}
+# 	opt -S -O3 -o $@ $< > /dev/null
 
 # assemble
 %.s: %.ll
@@ -58,7 +61,7 @@ ${PROGBEST}.ll: ${PROG}.ll ${ODIR}/${TARGET}
 %.out: %.s
 	${CC} -o $@ $<
 
-prog: ${PROG}.out ${PROGOPT}.out ${PROGBEST}.out
+prog: ${PROG}.out ${PROGBASE}.out ${PROGOPT}.out # ${PROGBEST}.out
 
 
 # misc
