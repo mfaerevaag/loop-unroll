@@ -6,7 +6,7 @@ ODIR = build
 PDIR = program
 
 TARGET = CompArch
-PASSNAME = LoopUnroll
+PASSNAME = my-loop-unroll
 
 PROG ?= loop
 PROGOPT ?= ${PROG}-opt

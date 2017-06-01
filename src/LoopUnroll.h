@@ -1,8 +1,5 @@
-#ifndef LOOP_UNROLL_PASS_H
-#define LOOP_UNROLL_PASS_H
-
-#include <llvm/Pass.h>
-#include <llvm/Analysis/LoopPass.h>
+#ifndef LOOP_UNROLL_H
+#define LOOP_UNROLL_H
 
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/LoopPass.h"
@@ -28,4 +25,4 @@ class LoopUnroll : public LoopPass
     }
 };
 
-#endif /* LOOP_UNROLL_PASS_H */
+#endif /* LOOP_UNROLL_H */

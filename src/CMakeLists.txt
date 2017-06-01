@@ -11,4 +11,4 @@ find_package(LLVM REQUIRED CONFIG)
 add_definitions(${LLVM_DEFINITIONS})
 include_directories(${LLVM_INCLUDE_DIRS})
 
-add_library(CompArch MODULE main.cpp LoopUnrollPass.cpp)
+add_library(CompArch MODULE main.cpp LoopUnroll.cpp)

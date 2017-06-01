@@ -7,7 +7,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "LoopUnrollPass.h"
+#include "LoopUnroll.h"
 
 using namespace llvm;
 
