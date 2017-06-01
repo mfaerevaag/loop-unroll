@@ -30,7 +30,6 @@ class LoopUnroll : public LoopPass
  private:
     bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
                     LoopInfo *LI, DominatorTree &DT, ScalarEvolution *SE);
-    BasicBlock *FoldBlockIntoPredecessor(BasicBlock *BB, LoopInfo *LI);
 
     /// A magic value for use with the Threshold parameter to indicate
     /// that the loop unroll should be performed regardless of how much

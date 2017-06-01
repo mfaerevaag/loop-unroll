@@ -53,8 +53,8 @@ static unsigned estimateLoopSize(const Loop *L)
     return size;
 }
 
-// convert the instruction operands from referencing the
-// current values into those specified by ValueMap.
+// convert the instruction operands from referencing the current values into
+// those specified by ValueMap.
 static inline void remapInstruction(Instruction *I, ValueToValueMapTy &ValueMap)
 {
     for (unsigned op = 0, E = I->getNumOperands(); op != E; ++op) {
@@ -65,10 +65,10 @@ static inline void remapInstruction(Instruction *I, ValueToValueMapTy &ValueMap)
     }
 }
 
-// FoldBlockIntoPredecessor - Folds a basic block into its predecessor if it
-// only has one predecessor, and that predecessor only has one successor.
-// Returns the new combined block.
-BasicBlock *LoopUnroll::FoldBlockIntoPredecessor(BasicBlock *BB, LoopInfo *LI)
+// folds a basic block into its predecessor if it only has one predecessor, and
+// that predecessor only has one successor.
+// returns the new combined block.
+BasicBlock *foldBlockIntoPredecessor(BasicBlock *BB, LoopInfo *LI)
 {
     // Merge basic blocks into their predecessor if there is only one distinct
     // pred, and if there is only one distinct successor of the predecessor, and
@@ -381,7 +381,7 @@ bool LoopUnroll::unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
                     BranchInst::Create(Dest, Term);
                     Term->eraseFromParent();
                     // Merge adjacent basic blocks, if possible.
-                    if (BasicBlock *Fold = FoldBlockIntoPredecessor(Dest, LI)) {
+                    if (BasicBlock *Fold = foldBlockIntoPredecessor(Dest, LI)) {
                         std::replace(Latches.begin(), Latches.end(), Dest, Fold);
                         std::replace(Headers.begin(), Headers.end(), Dest, Fold);
                     }
