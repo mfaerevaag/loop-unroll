@@ -42,7 +42,9 @@ ${ODIR}/${TARGET}: ${ODIR} ${ODIR}/Makefile
 
 # optimize
 ${PROGOPT}.ll: ${PROG}.ll ${ODIR}/${TARGET}
-	opt -S -load ${ODIR}/lib${TARGET}.so -${PASSNAME} -o $@ $< > /dev/null
+	opt -S -load ${ODIR}/lib${TARGET}.so \
+-mem2reg -simplifycfg -loops -loop-simplify -loop-rotate \
+-${PASSNAME} -o $@ $< > /dev/null
 
 # optimize
 ${PROGBEST}.ll: ${PROG}.ll ${ODIR}/${TARGET}

@@ -9,7 +9,7 @@ void MAGIC_FUNC (int *a, int *b)
 
     x = 0;
 
-    for (i = 0; i < *a; i++) {
+    for (i = 0; i < 10; i++) {
         x += i;
     }
 
