@@ -18,7 +18,7 @@ export
 
 .PHONY: all prog clean cleanprog
 
-.SECONDARY: ${PROG}.s ${PROGOPT}.s ${PROGBEST}.s
+.SECONDARY: *.s
 
 all: ${ODIR}/${TARGET}
 
