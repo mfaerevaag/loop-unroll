@@ -124,17 +124,28 @@ BasicBlock *LoopUnroll::FoldBlockIntoPredecessor(BasicBlock *BB, LoopInfo *LI)
 
 bool LoopUnroll::runOnLoop(Loop *L, LPPassManager &LPM)
 {
-    // LoopInfo *LI = &getAnalysis<LoopInfo>();
+    BasicBlock *H = L->getHeader();
+    StringRef funcName = H->getParent()->getName();
+
+    // check if magic function
+    if (funcName != MAGIC_FUNC) {
+        return false;
+    }
+
+    errs() << "Loop Unroll: F[" << funcName
+           << "] L%" << H->getName() << "\n";
 
     auto &DT = getAnalysis<DominatorTreeWrapperPass>().getDomTree();
     LoopInfo *LI = &getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
     ScalarEvolution *SE = &getAnalysis<ScalarEvolutionWrapperPass>().getSE();
 
-    // Unroll the loop.
-    if (!unrollLoop(L, UnrollCount, UnrollThreshold, LI, DT, SE))
+    // try to unroll
+    if (!unrollLoop(L, UnrollCount, UnrollThreshold, LI, DT, SE)) {
+        errs() << "Failed...\n";
         return false;
+    }
 
-    // // Update the loop information for this loop.
+    // TODO: update the loop info
     // // If we completely unrolled the loop, remove it from the parent.
     // if (L->getNumBackEdges() == 0)
     //     LPM.deleteLoopFromQueue(L);
@@ -157,9 +168,6 @@ bool LoopUnroll::unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
     BasicBlock *Header = L->getHeader();
     BasicBlock *LatchBlock = L->getLoopLatch();
     BranchInst *BI = dyn_cast<BranchInst>(LatchBlock->getTerminator());
-
-    errs() << "Loop Unroll: F[" << Header->getParent()->getName()
-           << "] Loop %" << Header->getName() << "\n";
 
     if (!BI || BI->isUnconditional()) {
         // The loop-rotate pass can be helpful to avoid this in many cases.
