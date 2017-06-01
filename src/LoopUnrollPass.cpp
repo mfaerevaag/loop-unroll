@@ -122,37 +122,6 @@ BasicBlock *LoopUnroll::FoldBlockIntoPredecessor(BasicBlock *BB, LoopInfo *LI)
     return OnlyPred;
 }
 
-bool LoopUnroll::runOnLoop(Loop *L, LPPassManager &LPM)
-{
-    BasicBlock *H = L->getHeader();
-    StringRef funcName = H->getParent()->getName();
-
-    // check if magic function
-    if (funcName != MAGIC_FUNC) {
-        return false;
-    }
-
-    errs() << "Loop Unroll: F[" << funcName
-           << "] L%" << H->getName() << "\n";
-
-    auto &DT = getAnalysis<DominatorTreeWrapperPass>().getDomTree();
-    LoopInfo *LI = &getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
-    ScalarEvolution *SE = &getAnalysis<ScalarEvolutionWrapperPass>().getSE();
-
-    // try to unroll
-    if (!unrollLoop(L, UnrollCount, UnrollThreshold, LI, DT, SE)) {
-        errs() << "Failed...\n";
-        return false;
-    }
-
-    // TODO: update the loop info
-    // // If we completely unrolled the loop, remove it from the parent.
-    // if (L->getNumBackEdges() == 0)
-    //     LPM.deleteLoopFromQueue(L);
-
-    return true;
-}
-
 /// Unroll the given loop by UnrollCount, or by a heuristically-determined
 /// value if Count is zero. If Threshold is not NoThreshold, it is a value
 /// to limit code size expansion. If the loop size would expand beyond the
@@ -171,7 +140,7 @@ bool LoopUnroll::unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
 
     if (!BI || BI->isUnconditional()) {
         // The loop-rotate pass can be helpful to avoid this in many cases.
-        errs() << "  Can't unroll; loop not terminated by a conditional branch.\n";
+        errs() << "\tskipping: loop not terminated by a conditional branch\n";
         return false;
     }
 
@@ -180,27 +149,8 @@ bool LoopUnroll::unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
     // greatest known integer multiple of the trip count.
     unsigned TripCount = 0;
     unsigned TripMultiple = 1;
-    // if (Value *TripCountValue = LI->getSmallConstantTripCount()) {
-    //     if (ConstantInt *TripCountC = dyn_cast<ConstantInt>(TripCountValue)) {
-    //         // Guard against huge trip counts. This also guards against assertions in
-    //         // APInt from the use of getZExtValue, below.
-    //         if (TripCountC->getValue().getActiveBits() <= 32) {
-    //             TripCount = (unsigned)TripCountC->getZExtValue();
-    //         }
-    //     } else if (BinaryOperator *BO = dyn_cast<BinaryOperator>(TripCountValue)) {
-    //         switch (BO->getOpcode()) {
-    //         case BinaryOperator::Mul:
-    //             if (ConstantInt *MultipleC = dyn_cast<ConstantInt>(BO->getOperand(1))) {
-    //                 if (MultipleC->getValue().getActiveBits() <= 32) {
-    //                     TripMultiple = (unsigned)MultipleC->getZExtValue();
-    //                 }
-    //             }
-    //             break;
-    //         default: break;
-    //         }
-    //     }
-    // }
 
+    // TODO: check for large loop counts
     BasicBlock *ExitingBlock = L->getLoopLatch();
     if (!ExitingBlock || !L->isLoopExiting(ExitingBlock))
         ExitingBlock = L->getExitingBlock();
@@ -210,9 +160,9 @@ bool LoopUnroll::unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
     }
 
     if (TripCount != 0)
-        errs() << "  Trip Count = " << TripCount << "\n";
+        errs() << "  trip count = " << TripCount << "\n";
     if (TripMultiple != 1)
-        errs() << "  Trip Multiple = " << TripMultiple << "\n";
+        errs() << "  trip multiple = " << TripMultiple << "\n";
 
     // Automatically select an unroll count.
     if (Count == 0) {
@@ -235,14 +185,15 @@ bool LoopUnroll::unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
     assert(TripMultiple > 0);
     assert(TripCount == 0 || TripCount % TripMultiple == 0);
 
-    // Enforce the threshold.
+    // enforce the threshold
     if (Threshold != NoThreshold) {
         unsigned LoopSize = ApproximateLoopSize(L);
-        errs() << "  Loop Size = " << LoopSize << "\n";
-        uint64_t Size = (uint64_t)LoopSize*Count;
+        errs() << "  size = " << LoopSize << "\n";
+
+        uint64_t Size = (uint64_t) LoopSize *Count;
         if (TripCount != 1 && Size > Threshold) {
-            errs() << "  TOO LARGE TO UNROLL: "
-                   << Size << ">" << Threshold << "\n";
+            errs() << "skipping: too large to unroll (threshold = "
+                   << Threshold << ")\n";
             return false;
         }
     }
@@ -262,17 +213,15 @@ bool LoopUnroll::unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
     }
 
     if (CompletelyUnroll) {
-        errs() << "COMPLETELY UNROLLING loop %" << Header->getName()
-               << " with trip count " << TripCount << "!\n";
+        errs() << "COMPLETELY unrolling\n";
     } else {
-        errs() << "UNROLLING loop %" << Header->getName()
-               << " by " << Count;
+        errs() << "PARTIALLY unrolling" << " by " << Count << "\n";
+
         if (TripMultiple == 0 || BreakoutTrip != TripMultiple) {
-            errs() << " with a breakout at trip " << BreakoutTrip;
+            errs() << "  with a breakout at trip " << BreakoutTrip << "\n";
         } else if (TripMultiple != 1) {
-            errs() << " with " << TripMultiple << " trips per branch";
+            errs() << "  with " << TripMultiple << " trips per branch" << "\n";
         }
-        errs() << "!\n";
     }
 
     std::vector<BasicBlock*> LoopBlocks = L->getBlocks();
@@ -464,10 +413,40 @@ bool LoopUnroll::unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
                 }
             }
 
-            errs() << "Finished unrolling\n";
-
             return true;
         }
     }
+}
 
+bool LoopUnroll::runOnLoop(Loop *L, LPPassManager &LPM)
+{
+    BasicBlock *H = L->getHeader();
+    StringRef funcName = H->getParent()->getName();
+
+    // check if magic function
+    if (funcName != MAGIC_FUNC) {
+        return false;
+    }
+
+    errs() << "Loop Unroll: F[" << funcName
+           << "] L%" << H->getName() << "\n";
+
+    auto &DT = getAnalysis<DominatorTreeWrapperPass>().getDomTree();
+    LoopInfo *LI = &getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
+    ScalarEvolution *SE = &getAnalysis<ScalarEvolutionWrapperPass>().getSE();
+
+    // try to unroll
+    if (!unrollLoop(L, UnrollCount, UnrollThreshold, LI, DT, SE)) {
+        errs() << "failed...\n";
+        return false;
+    }
+
+    // TODO: update the loop info
+    // // If we completely unrolled the loop, remove it from the parent.
+    // if (L->getNumBackEdges() == 0)
+    //     LPM.deleteLoopFromQueue(L);
+
+    errs() << "finished\n";
+
+    return true;
 }
