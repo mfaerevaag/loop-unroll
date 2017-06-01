@@ -20,11 +20,6 @@ class LoopUnroll : public LoopPass
     static char ID;
  LoopUnroll() : LoopPass(ID) {}
 
-    /// A magic value for use with the Threshold parameter to indicate
-    /// that the loop unroll should be performed regardless of how much
-    /// code expansion would result.
-    static const unsigned NoThreshold = UINT_MAX;
-
     bool runOnLoop(Loop *L, LPPassManager &LPM);
 
     void getAnalysisUsage(AnalysisUsage &AU) const override
@@ -36,6 +31,11 @@ class LoopUnroll : public LoopPass
     bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
                     LoopInfo *LI, DominatorTree &DT, ScalarEvolution *SE);
     BasicBlock *FoldBlockIntoPredecessor(BasicBlock *BB, LoopInfo *LI);
+
+    /// A magic value for use with the Threshold parameter to indicate
+    /// that the loop unroll should be performed regardless of how much
+    /// code expansion would result.
+    static const unsigned NoThreshold = UINT_MAX;
 };
 
 #endif /* LOOP_UNROLL_PASS_H */
