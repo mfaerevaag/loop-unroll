@@ -20,12 +20,9 @@ static cl::opt<unsigned> UnrollCount ("my-unroll-count", cl::init(0), cl::Hidden
 
 char LoopUnroll::ID = 0;
 
-// LoopPass *llvm::createLoopUnrollPass() { return new LoopUnroll(); }
-
-/// ApproximateLoopSize - Approximate the size of the loop.
-static unsigned ApproximateLoopSize(const Loop *L)
+static unsigned estimateLoopSize(const Loop *L)
 {
-    unsigned Size = 0;
+    unsigned size = 0;
 
     for (unsigned i = 0, e = L->getBlocks().size(); i != e; ++i) {
         BasicBlock *BB = L->getBlocks()[i];
@@ -44,20 +41,16 @@ static unsigned ApproximateLoopSize(const Loop *L)
                 // numbers that help one isolated test case from PR2067 without
                 // negatively impacting measured benchmarks.
                 if (isa<IntrinsicInst>(I))
-                    Size = Size + 3;
+                    size = size + 3;
                 else
-                    Size = Size + 10;
+                    size += 10;
             } else {
-                ++Size;
+                size++;
             }
-
-            // TODO: Ignore expressions derived from PHI and constants if inval of phi
-            // is a constant, or if operation is associative.  This will get induction
-            // variables.
         }
     }
 
-    return Size;
+    return size;
 }
 
 // RemapInstruction - Convert the instruction operands from referencing the
@@ -187,7 +180,7 @@ bool LoopUnroll::unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
 
     // enforce the threshold
     if (Threshold != NoThreshold) {
-        unsigned LoopSize = ApproximateLoopSize(L);
+        unsigned LoopSize = estimateLoopSize(L);
         errs() << "  size = " << LoopSize << "\n";
 
         uint64_t Size = (uint64_t) LoopSize *Count;
