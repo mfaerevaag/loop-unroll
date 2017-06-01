@@ -114,14 +114,11 @@ BasicBlock *foldBlockIntoPredecessor(BasicBlock *BB, LoopInfo *LI)
     return OnlyPred;
 }
 
-/// Unroll the given loop by UnrollCount, or by a heuristically-determined
-/// value if Count is zero. If Threshold is not NoThreshold, it is a value
-/// to limit code size expansion. If the loop size would expand beyond the
-/// threshold value, unrolling is suppressed. The return value is true if
-/// any transformations are performed.
-///
-bool LoopUnroll::unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
-                            LoopInfo *LI, DominatorTree &DT, ScalarEvolution *SE)
+// unroll by given UnrollCount or heuristically-determined if Count is zero
+// if given Threshold equal zero, no threshold is enforced
+// returns true if any transformations are performed
+bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
+                LoopInfo *LI, DominatorTree &DT, ScalarEvolution *SE)
 {
     assert(L->isLCSSAForm(DT));
     // TODO: L->isLoopSimplifyForm() ?
@@ -178,7 +175,7 @@ bool LoopUnroll::unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
     assert(TripCount == 0 || TripCount % TripMultiple == 0);
 
     // enforce the threshold
-    if (Threshold != NoThreshold) {
+    if (Threshold > 0) {
         unsigned LoopSize = estimateLoopSize(L);
         errs() << "  size = " << LoopSize << "\n";
 

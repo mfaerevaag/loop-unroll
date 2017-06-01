@@ -26,15 +26,6 @@ class LoopUnroll : public LoopPass
     {
         getLoopAnalysisUsage(AU);
     }
-
- private:
-    bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
-                    LoopInfo *LI, DominatorTree &DT, ScalarEvolution *SE);
-
-    /// A magic value for use with the Threshold parameter to indicate
-    /// that the loop unroll should be performed regardless of how much
-    /// code expansion would result.
-    static const unsigned NoThreshold = UINT_MAX;
 };
 
 #endif /* LOOP_UNROLL_PASS_H */
