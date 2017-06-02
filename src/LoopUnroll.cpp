@@ -2,6 +2,12 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/Analysis/LoopInfo.h"
+#include "llvm/Analysis/LoopPass.h"
+#include "llvm/Analysis/ScalarEvolution.h"
+#include "llvm/Analysis/CodeMetrics.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/Transforms/Utils/LoopUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Support/CommandLine.h"
@@ -23,34 +29,29 @@ static cl::opt<unsigned> UnrollCount ("my-unroll-count", cl::init(0), cl::Hidden
 
 // helper functions
 
-static unsigned estimateLoopSize(const Loop *L)
+static unsigned estimateLoopSize(const Loop *L, AssumptionCache *AC,
+                                 const TargetTransformInfo &TTI)
 {
     unsigned size = 0;
+    CodeMetrics Metrics;
+    SmallPtrSet<const Value *, 32> EphValues;
 
-    for (unsigned i = 0, e = L->getBlocks().size(); i != e; ++i) {
-        BasicBlock *BB = L->getBlocks()[i];
-        Instruction *Term = BB->getTerminator();
+    // get dynamic values allocated at runtime
+    // (those used only by an assume or similar intrinsics in the loop)
+    CodeMetrics::collectEphemeralValues(L, AC, EphValues);
 
-        for (BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E; ++I) {
-            if (isa<PHINode>(I) && BB == L->getHeader()) {
-                // Ignore PHI nodes in the header.
-            } else if (I->hasOneUse() && I->user_back() == Term) {
-                // Ignore instructions only used by the loop terminator.
-            // } else if (isa<DbgInfoIntrinsic>(I)) { // TODO
-            //     // Ignore debug instructions
-            } else if (isa<CallInst>(I)) {
-                // Estimate size overhead introduced by call instructions which
-                // is higher than other instructions. Here 3 and 10 are magic
-                // numbers that help one isolated test case from PR2067 without
-                // negatively impacting measured benchmarks.
-                if (isa<IntrinsicInst>(I))
-                    size = size + 3;
-                else
-                    size += 10;
-            } else {
-                size++;
-            }
-        }
+    // get metrics for each block in the loop
+    for (BasicBlock *BB : L->blocks()) {
+        Metrics.analyzeBasicBlock(BB, TTI, EphValues);
+    }
+
+    // get total size as number of instructions
+    size = Metrics.NumInsts;
+
+    // should never be zero, as we assume at least:
+    // one comparison, one branch and one iterator increment instruction
+    if (size == 0) {
+        size = 3;
     }
 
     return size;
@@ -117,30 +118,32 @@ BasicBlock *foldBlockIntoPredecessor(BasicBlock *BB, LoopInfo *LI)
     return OnlyPred;
 }
 
-// unroll by given UnrollCount or heuristically-determined if Count is zero
-// if given Threshold equal zero, no threshold is enforced
+// if Count is zero, try to automatically find UnrollCount
+// if Threshold equal zero, no threshold is enforced
 // returns true if any transformations are performed
 bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
-                LoopInfo *LI, DominatorTree &DT, ScalarEvolution *SE)
+                LoopInfo *LI, DominatorTree &DT, ScalarEvolution *SE,
+                AssumptionCache &AC, const TargetTransformInfo &TTI)
 {
     assert(L->isLCSSAForm(DT));
     // TODO: L->isLoopSimplifyForm() ?
+
+    unsigned TripCount, TripMultiple, LoopSize;
 
     BasicBlock *Header = L->getHeader();
     BasicBlock *LatchBlock = L->getLoopLatch();
     BranchInst *BI = dyn_cast<BranchInst>(LatchBlock->getTerminator());
 
+    // loop must terminate in a condition branch
+    // use `loop-rotate` pass to fix this
     if (!BI || BI->isUnconditional()) {
-        // The loop-rotate pass can be helpful to avoid this in many cases.
-        errs() << "\tskipping: loop not terminated by a conditional branch\n";
+        errs() << "skipping: loop not terminated by a conditional branch\n";
         return false;
     }
 
-    // Determine the trip count and/or trip multiple. A TripCount value of zero
-    // is used to mean an unknown trip count. The TripMultiple value is the
-    // greatest known integer multiple of the trip count.
-    unsigned TripCount = 0;
-    unsigned TripMultiple = 1;
+    // determine Trip and TripMultiple count
+    TripCount = 0;              // 0 = unknown
+    TripMultiple = 1;           // greatest known integer multiple of the trip count
 
     // TODO: check for large loop counts
     BasicBlock *ExitingBlock = L->getLoopLatch();
@@ -151,37 +154,40 @@ bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
         TripMultiple = SE->getSmallConstantTripMultiple(L, ExitingBlock);
     }
 
-    if (TripCount != 0)
-        errs() << "  trip count = " << TripCount << "\n";
-    if (TripMultiple != 1)
+    // print counts
+    errs() << "  trip count = " << (TripCount != 0 ? TripCount : "unknown") << "\n";
+    if (TripMultiple != 1) {
         errs() << "  trip multiple = " << TripMultiple << "\n";
+    }
 
-    // Automatically select an unroll count.
+    // try to automatically calculate the UnrollCount
     if (Count == 0) {
-        // Conservative heuristic: if we know the trip count, see if we can
-        // completely unroll (subject to the threshold, checked below); otherwise
-        // don't unroll.
+        // if we know trip count, try to completely unroll (enforcing threshold)
+        // else, bail out
         if (TripCount != 0) {
             Count = TripCount;
         } else {
+            errs() << "skipping: cannot determine unroll count\n";
             return false;
         }
     }
 
-    // Effectively "DCE" unrolled iterations that are beyond the tripcount
-    // and will never be executed.
-    if (TripCount != 0 && Count > TripCount)
+    // cant unroll more times than the trip count, if known
+    if (TripCount != 0 && Count > TripCount) {
         Count = TripCount;
+    }
 
+    // check values before proceeding
     assert(Count > 0);
     assert(TripMultiple > 0);
     assert(TripCount == 0 || TripCount % TripMultiple == 0);
 
+    // calculate loop size
+    LoopSize = estimateLoopSize(L, &AC, TTI);
+    errs() << "  size = " << LoopSize << "\n";
+
     // enforce the threshold
     if (Threshold > 0) {
-        unsigned LoopSize = estimateLoopSize(L);
-        errs() << "  size = " << LoopSize << "\n";
-
         uint64_t Size = (uint64_t) LoopSize *Count;
         if (TripCount != 1 && Size > Threshold) {
             errs() << "skipping: too large to unroll (threshold = "
@@ -190,7 +196,7 @@ bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
         }
     }
 
-    // Are we eliminating the loop control altogether?
+    // if TripCount and Count is the same, the loop will be completely unrolled
     bool CompletelyUnroll = Count == TripCount;
 
     // If we know the trip count, we know the multiple...
@@ -204,6 +210,7 @@ bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
             (unsigned)GreatestCommonDivisor64(Count, TripMultiple);
     }
 
+    // print some info
     if (CompletelyUnroll) {
         errs() << "COMPLETELY unrolling\n";
     } else {
@@ -418,7 +425,9 @@ char LoopUnroll::ID = 0;
 bool LoopUnroll::runOnLoop(Loop *L, LPPassManager &LPM)
 {
     BasicBlock *H = L->getHeader();
-    StringRef funcName = H->getParent()->getName();
+    // Function &F = *L->getHeader()->getParent();
+    Function *F = H->getParent();
+    StringRef funcName = F->getName();
 
     // check if magic function
     if (funcName != MAGIC_FUNC) {
@@ -431,9 +440,11 @@ bool LoopUnroll::runOnLoop(Loop *L, LPPassManager &LPM)
     auto &DT = getAnalysis<DominatorTreeWrapperPass>().getDomTree();
     LoopInfo *LI = &getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
     ScalarEvolution *SE = &getAnalysis<ScalarEvolutionWrapperPass>().getSE();
+    const TargetTransformInfo &TTI = getAnalysis<TargetTransformInfoWrapperPass>().getTTI(*F);
+    auto &AC = getAnalysis<AssumptionCacheTracker>().getAssumptionCache(*F);
 
     // try to unroll
-    if (!unrollLoop(L, UnrollCount, UnrollThreshold, LI, DT, SE)) {
+    if (!unrollLoop(L, UnrollCount, UnrollThreshold, LI, DT, SE, AC, TTI)) {
         errs() << "failed...\n";
         return false;
     }

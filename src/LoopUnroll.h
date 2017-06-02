@@ -1,13 +1,10 @@
 #ifndef LOOP_UNROLL_H
 #define LOOP_UNROLL_H
 
-#include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/LoopPass.h"
-#include "llvm/Analysis/ScalarEvolution.h"
-#include "llvm/Transforms/Utils/Cloning.h"
-#include "llvm/Transforms/Utils/Local.h"
+#include "llvm/Analysis/AssumptionCache.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Transforms/Utils/LoopUtils.h"
-#include "llvm/Support/CommandLine.h"
 
 using namespace llvm;
 
@@ -21,6 +18,8 @@ class LoopUnroll : public LoopPass
 
     void getAnalysisUsage(AnalysisUsage &AU) const override
     {
+        AU.addRequired<AssumptionCacheTracker>();
+        AU.addRequired<TargetTransformInfoWrapperPass>();
         getLoopAnalysisUsage(AU);
     }
 };
