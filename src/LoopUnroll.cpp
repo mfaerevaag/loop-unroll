@@ -324,102 +324,102 @@ bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
             for (Instruction &I : *NewBlock) {
                 remapInstruction(&I, LastValueMap);
             }
-
-            // The latch block exits the loop.  If there are any PHI nodes in the
-            // successor blocks, update them to use the appropriate values computed as the
-            // last iteration of the loop.
-            if (Count != 1) {
-                SmallPtrSet<PHINode*, 8> Users;
-                for (Value::use_iterator UI = LatchBlock->use_begin(),
-                         UE = LatchBlock->use_end(); UI != UE; ++UI)
-                    if (PHINode *phi = dyn_cast<PHINode>(*UI))
-                        Users.insert(phi);
-
-                BasicBlock *LastIterationBB = cast<BasicBlock>(LastValueMap[LatchBlock]);
-                for (SmallPtrSet<PHINode*,8>::iterator SI = Users.begin(), SE = Users.end();
-                     SI != SE; ++SI) {
-                    PHINode *PN = *SI;
-                    Value *InVal = PN->removeIncomingValue(LatchBlock, false);
-                    // If this value was defined in the loop, take the value defined by the
-                    // last iteration of the loop.
-                    if (Instruction *InValI = dyn_cast<Instruction>(InVal)) {
-                        if (L->contains(InValI->getParent()))
-                            InVal = LastValueMap[InVal];
-                    }
-                    PN->addIncoming(InVal, LastIterationBB);
-                }
-            }
-
-            // Now, if we're doing complete unrolling, loop over the PHI nodes in the
-            // original block, setting them to their incoming values.
-            if (CompletelyUnroll) {
-                BasicBlock *Preheader = L->getLoopPreheader();
-                for (unsigned i = 0, e = OrigPHINode.size(); i != e; ++i) {
-                    PHINode *PN = OrigPHINode[i];
-                    PN->replaceAllUsesWith(PN->getIncomingValueForBlock(Preheader));
-                    Header->getInstList().erase(PN);
-                }
-            }
-
-            // Now that all the basic blocks for the unrolled iterations are in place,
-            // set up the branches to connect them.
-            for (unsigned i = 0, e = Latches.size(); i != e; ++i) {
-                // The original branch was replicated in each unrolled iteration.
-                BranchInst *Term = cast<BranchInst>(Latches[i]->getTerminator());
-
-                // The branch destination.
-                unsigned j = (i + 1) % e;
-                BasicBlock *Dest = Headers[j];
-                bool NeedConditional = true;
-
-                // For a complete unroll, make the last iteration end with a branch
-                // to the exit block.
-                if (CompletelyUnroll && j == 0) {
-                    Dest = LoopExit;
-                    NeedConditional = false;
-                }
-
-                // If we know the trip count or a multiple of it, we can safely use an
-                // unconditional branch for some iterations.
-                if (j != BreakoutTrip && (TripMultiple == 0 || j % TripMultiple != 0)) {
-                    NeedConditional = false;
-                }
-
-                if (NeedConditional) {
-                    // Update the conditional branch's successor for the following
-                    // iteration.
-                    Term->setSuccessor(!ContinueOnTrue, Dest);
-                } else {
-                    BranchInst::Create(Dest, Term);
-                    Term->eraseFromParent();
-                    // Merge adjacent basic blocks, if possible.
-                    if (BasicBlock *Fold = foldBlockIntoPredecessor(Dest, LI)) {
-                        std::replace(Latches.begin(), Latches.end(), Dest, Fold);
-                        std::replace(Headers.begin(), Headers.end(), Dest, Fold);
-                    }
-                }
-            }
-
-            // At this point, the code is well formed.  We now do a quick sweep over the
-            // inserted code, doing constant propagation and dead code elimination as we
-            // go.
-            // const DataLayout &DL = Header->getModule()->getDataLayout();
-            const std::vector<BasicBlock*> &NewLoopBlocks = L->getBlocks();
-            for (BasicBlock *BB : NewLoopBlocks) {
-                for (BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E; ) {
-                    Instruction *Inst = &*I++;
-
-                    // if (Value *V = SimplifyInstruction(Inst, {DL, nullptr, DT, AC}))
-                    //     if (LI->replacementPreservesLCSSAForm(Inst, V))
-                    //         Inst->replaceAllUsesWith(V);
-                    if (isInstructionTriviallyDead(Inst))
-                        BB->getInstList().erase(Inst);
-                }
-            }
-
-            return true;
         }
     }
+
+    // The latch block exits the loop.  If there are any PHI nodes in the
+    // successor blocks, update them to use the appropriate values computed as the
+    // last iteration of the loop.
+    if (Count != 1) {
+        SmallPtrSet<PHINode*, 8> Users;
+        for (Value::use_iterator UI = LatchBlock->use_begin(),
+                 UE = LatchBlock->use_end(); UI != UE; ++UI)
+            if (PHINode *phi = dyn_cast<PHINode>(*UI))
+                Users.insert(phi);
+
+        BasicBlock *LastIterationBB = cast<BasicBlock>(LastValueMap[LatchBlock]);
+        for (SmallPtrSet<PHINode*,8>::iterator SI = Users.begin(), SE = Users.end();
+             SI != SE; ++SI) {
+            PHINode *PN = *SI;
+            Value *InVal = PN->removeIncomingValue(LatchBlock, false);
+            // If this value was defined in the loop, take the value defined by the
+            // last iteration of the loop.
+            if (Instruction *InValI = dyn_cast<Instruction>(InVal)) {
+                if (L->contains(InValI->getParent()))
+                    InVal = LastValueMap[InVal];
+            }
+            PN->addIncoming(InVal, LastIterationBB);
+        }
+    }
+
+    // Now, if we're doing complete unrolling, loop over the PHI nodes in the
+    // original block, setting them to their incoming values.
+    if (CompletelyUnroll) {
+        BasicBlock *Preheader = L->getLoopPreheader();
+        for (unsigned i = 0, e = OrigPHINode.size(); i != e; ++i) {
+            PHINode *PN = OrigPHINode[i];
+            PN->replaceAllUsesWith(PN->getIncomingValueForBlock(Preheader));
+            Header->getInstList().erase(PN);
+        }
+    }
+
+    // Now that all the basic blocks for the unrolled iterations are in place,
+    // set up the branches to connect them.
+    for (unsigned i = 0, e = Latches.size(); i != e; ++i) {
+        // The original branch was replicated in each unrolled iteration.
+        BranchInst *Term = cast<BranchInst>(Latches[i]->getTerminator());
+
+        // The branch destination.
+        unsigned j = (i + 1) % e;
+        BasicBlock *Dest = Headers[j];
+        bool NeedConditional = true;
+
+        // For a complete unroll, make the last iteration end with a branch
+        // to the exit block.
+        if (CompletelyUnroll && j == 0) {
+            Dest = LoopExit;
+            NeedConditional = false;
+        }
+
+        // If we know the trip count or a multiple of it, we can safely use an
+        // unconditional branch for some iterations.
+        if (j != BreakoutTrip && (TripMultiple == 0 || j % TripMultiple != 0)) {
+            NeedConditional = false;
+        }
+
+        if (NeedConditional) {
+            // Update the conditional branch's successor for the following
+            // iteration.
+            Term->setSuccessor(!ContinueOnTrue, Dest);
+        } else {
+            BranchInst::Create(Dest, Term);
+            Term->eraseFromParent();
+            // Merge adjacent basic blocks, if possible.
+            if (BasicBlock *Fold = foldBlockIntoPredecessor(Dest, LI)) {
+                std::replace(Latches.begin(), Latches.end(), Dest, Fold);
+                std::replace(Headers.begin(), Headers.end(), Dest, Fold);
+            }
+        }
+    }
+
+    // At this point, the code is well formed.  We now do a quick sweep over the
+    // inserted code, doing constant propagation and dead code elimination as we
+    // go.
+    const std::vector<BasicBlock*> &NewLoopBlocks = L->getBlocks();
+    for (std::vector<BasicBlock*>::const_iterator BB = NewLoopBlocks.begin(),
+             BBE = NewLoopBlocks.end(); BB != BBE; ++BB)
+        for (BasicBlock::iterator I = (*BB)->begin(), E = (*BB)->end(); I != E; ) {
+            Instruction *Inst = &*I++;
+
+            if (isInstructionTriviallyDead(Inst))
+                (*BB)->getInstList().erase(Inst);
+            // else if (Constant *C = ConstantFoldInstruction(Inst)) {
+            //     Inst->replaceAllUsesWith(C);
+            //     (*BB)->getInstList().erase(Inst);
+            // }
+        }
+
+    return true;
 }
 
 
@@ -458,6 +458,8 @@ bool LoopUnroll::runOnLoop(Loop *L, LPPassManager &LPM)
     // // If we completely unrolled the loop, remove it from the parent.
     // if (L->getNumBackEdges() == 0)
     //     LPM.deleteLoopFromQueue(L);
+    // LI->markAsRemoved(L);
+    // LPM.markLoopAsDeleted(L);
 
     errs() << "finished\n";
 
