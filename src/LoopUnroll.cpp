@@ -155,7 +155,12 @@ bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
     }
 
     // print counts
-    errs() << "  trip count = " << (TripCount != 0 ? TripCount : "unknown") << "\n";
+    errs() << "  trip count = ";
+    if (TripCount != 0) {
+        errs() << TripCount << "\n";
+    } else {
+        errs() << "unknown" << "\n";
+    }
     if (TripMultiple != 1) {
         errs() << "  trip multiple = " << TripMultiple << "\n";
     }
