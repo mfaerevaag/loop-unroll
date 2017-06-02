@@ -49,9 +49,9 @@ ${PROGBASE}.ll: ${PROG}.ll ${ODIR}/${TARGET}
 ${PROGOPT}.ll: ${PROGBASE}.ll ${ODIR}/${TARGET}
 	opt -S -load ${ODIR}/lib${TARGET}.so -${PASSNAME} -o $@ $< > /dev/null
 
-# optimize
-# ${PROGBEST}.ll: ${PROG}.ll ${ODIR}/${TARGET}
-# 	opt -S -O3 -o $@ $< > /dev/null
+# best
+${PROGBEST}.ll: ${PROGBASE}.ll ${ODIR}/${TARGET}
+	opt -S -loop-unroll -o $@ $< > /dev/null
 
 # assemble
 %.s: %.ll
@@ -61,7 +61,7 @@ ${PROGOPT}.ll: ${PROGBASE}.ll ${ODIR}/${TARGET}
 %.out: %.s
 	${CC} -o $@ $<
 
-prog: ${PROG}.out ${PROGBASE}.out ${PROGOPT}.out # ${PROGBEST}.out
+prog: ${PROG}.out ${PROGBASE}.out ${PROGOPT}.out ${PROGBEST}.out
 
 
 # misc
