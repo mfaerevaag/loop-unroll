@@ -30,7 +30,8 @@ int main(void)
     MAGIC_FUNC (a, b);
     t1 = rdtsc();
 
-    printf("%zu\n", t1 - t0);
+    printf("result: %d\n", *b);
+    printf("time: %zu\n", t1 - t0);
 
     return 0;
 }
