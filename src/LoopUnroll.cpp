@@ -122,10 +122,10 @@ BasicBlock *foldBlockIntoPredecessor(BasicBlock *BB, LoopInfo *LI)
 // if Threshold equal zero, no threshold is enforced
 // returns true if any transformations are performed
 bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
-                LoopInfo *LI, DominatorTree &DT, ScalarEvolution *SE,
-                AssumptionCache &AC, const TargetTransformInfo &TTI)
+                LoopInfo *LI, DominatorTree *DT, ScalarEvolution *SE,
+                AssumptionCache *AC, const TargetTransformInfo &TTI)
 {
-    assert(L->isLCSSAForm(DT));
+    assert(L->isLCSSAForm(*DT));
     // TODO: L->isLoopSimplifyForm() ?
 
     unsigned TripCount, TripMultiple, LoopSize;
@@ -188,7 +188,7 @@ bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
     assert(TripCount == 0 || TripCount % TripMultiple == 0);
 
     // calculate loop size
-    LoopSize = estimateLoopSize(L, &AC, TTI);
+    LoopSize = estimateLoopSize(L, AC, TTI);
     errs() << "  size = " << LoopSize << "\n";
 
     // enforce the threshold
@@ -449,7 +449,7 @@ bool LoopUnroll::runOnLoop(Loop *L, LPPassManager &LPM)
     auto &AC = getAnalysis<AssumptionCacheTracker>().getAssumptionCache(*F);
 
     // try to unroll
-    if (!unrollLoop(L, UnrollCount, UnrollThreshold, LI, DT, SE, AC, TTI)) {
+    if (!unrollLoop(L, UnrollCount, UnrollThreshold, LI, &DT, SE, &AC, TTI)) {
         errs() << "failed...\n";
         return false;
     }
