@@ -1,18 +1,28 @@
-#include "llvm/IR/IntrinsicInst.h"
-#include "llvm/IR/Constants.h"
-#include "llvm/IR/Function.h"
-#include "llvm/IR/Instructions.h"
-#include "llvm/Analysis/LoopInfo.h"
-#include "llvm/Analysis/LoopPass.h"
-#include "llvm/Analysis/ScalarEvolution.h"
+#include "llvm/Transforms/Utils/UnrollLoop.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/CodeMetrics.h"
-#include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/InstructionSimplify.h"
-#include "llvm/Transforms/Utils/LoopUtils.h"
+#include "llvm/Analysis/LoopIterator.h"
+#include "llvm/Analysis/LoopPass.h"
+#include "llvm/Analysis/OptimizationDiagnosticInfo.h"
+#include "llvm/Analysis/ScalarEvolution.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DebugInfoMetadata.h"
+#include "llvm/IR/Dominators.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/Local.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/Utils/LoopSimplify.h"
+#include "llvm/Transforms/Utils/LoopUtils.h"
+#include "llvm/Transforms/Utils/SimplifyIndVar.h"
+using namespace llvm;
 
 #include "LoopUnroll.h"
 
@@ -68,55 +78,79 @@ static inline void remapInstruction(Instruction *I, ValueToValueMapTy &ValueMap)
         if (It != ValueMap.end())
             I->setOperand(op, It->second);
     }
+
+    if (PHINode *PN = dyn_cast<PHINode>(I)) {
+        for (unsigned i = 0, e = PN->getNumIncomingValues(); i != e; ++i) {
+            ValueToValueMapTy::iterator It = ValueMap.find(PN->getIncomingBlock(i));
+            if (It != ValueMap.end())
+                PN->setIncomingBlock(i, cast<BasicBlock>(It->second));
+        }
+    }
 }
 
 // folds a basic block into its predecessor if it only has one predecessor, and
 // that predecessor only has one successor.
 // returns the new combined block.
-BasicBlock *foldBlockIntoPredecessor(BasicBlock *BB, LoopInfo *LI)
+static BasicBlock *foldBlockIntoPredecessor(BasicBlock *BB, LoopInfo *LI,
+                                            ScalarEvolution *SE,
+                                            SmallPtrSetImpl<Loop *> &ForgottenLoops,
+                                            DominatorTree *DT)
 {
-    // Merge basic blocks into their predecessor if there is only one distinct
-    // pred, and if there is only one distinct successor of the predecessor, and
-    // if there are no PHI nodes.
-    BasicBlock *OnlyPred = BB->getSinglePredecessor();
-    if (!OnlyPred) return 0;
+    BasicBlock *Pred = BB->getSinglePredecessor();
 
-    if (OnlyPred->getTerminator()->getNumSuccessors() != 1)
-        return 0;
+    // can only merge if single distinct predecessor and successor
+    if (!Pred) return nullptr;
+    if (Pred->getTerminator()->getNumSuccessors() != 1) return nullptr;
 
-    errs() << "Merging: " << *BB << "into: " << *OnlyPred;
+    errs() << "merging: " << *BB << "into: " << *Pred;
 
     // Resolve any PHI nodes at the start of the block.  They are all
     // guaranteed to have exactly one entry if they exist, unless there are
     // multiple duplicate (but guaranteed to be equal) entries for the
     // incoming edges.  This occurs when there are multiple edges from
-    // OnlyPred to OnlySucc.
-    while (PHINode *PN = dyn_cast<PHINode>(&BB->front())) {
-        PN->replaceAllUsesWith(PN->getIncomingValue(0));
-        BB->getInstList().pop_front();  // Delete the phi node...
-    }
+    // Pred to OnlySucc.
+    FoldSingleEntryPHINodes(BB);
 
     // Delete the unconditional branch from the predecessor...
-    OnlyPred->getInstList().pop_back();
-
-    // Move all definitions in the successor to the predecessor...
-    OnlyPred->getInstList().splice(OnlyPred->end(), BB->getInstList());
+    Pred->getInstList().pop_back();
 
     // Make all PHI nodes that referred to BB now refer to Pred as their
     // source...
-    BB->replaceAllUsesWith(OnlyPred);
+    BB->replaceAllUsesWith(Pred);
 
-    std::string OldName = BB->getName();
+    // Move all definitions in the successor to the predecessor...
+    Pred->getInstList().splice(Pred->end(), BB->getInstList());
 
-    // Erase basic block from the function...
+    // OldName will be valid until erased.
+    StringRef OldName = BB->getName();
+
+    // Erase the old block and update dominator info.
+    if (DT)
+        if (DomTreeNode *DTN = DT->getNode(BB)) {
+            DomTreeNode *PredDTN = DT->getNode(Pred);
+            SmallVector<DomTreeNode *, 8> Children(DTN->begin(), DTN->end());
+            for (auto *DI : Children)
+                DT->changeImmediateDominator(DI, PredDTN);
+
+            DT->eraseNode(BB);
+        }
+
+    // ScalarEvolution holds references to loop exit blocks.
+    if (SE) {
+        if (Loop *L = LI->getLoopFor(BB)) {
+            if (ForgottenLoops.insert(L).second)
+                SE->forgetLoop(L);
+        }
+    }
     LI->removeBlock(BB);
-    BB->eraseFromParent();
 
     // Inherit predecessor's name if it exists...
-    if (!OldName.empty() && !OnlyPred->hasName())
-        OnlyPred->setName(OldName);
+    if (!OldName.empty() && !Pred->hasName())
+        Pred->setName(OldName);
 
-    return OnlyPred;
+    BB->eraseFromParent();
+
+    return Pred;
 }
 
 // if Count is zero, try to automatically find UnrollCount
@@ -205,7 +239,7 @@ bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
     // if TripCount and Count is the same, the loop will be completely unrolled
     bool CompletelyUnroll = Count == TripCount;
 
-    // If we know the trip count, we know the multiple...
+    // if we know the trip count, we know the multiple...
     unsigned BreakoutTrip = 0;
     if (TripCount != 0) {
         BreakoutTrip = TripCount % Count;
@@ -213,7 +247,7 @@ bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
     } else {
         // Figure out what multiple to use.
         BreakoutTrip = TripMultiple =
-            (unsigned)GreatestCommonDivisor64(Count, TripMultiple);
+            (unsigned) GreatestCommonDivisor64(Count, TripMultiple);
     }
 
     // print some info
@@ -234,9 +268,8 @@ bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
     bool ContinueOnTrue = L->contains(BI->getSuccessor(0));
     BasicBlock *LoopExit = BI->getSuccessor(ContinueOnTrue);
 
-    // For the first iteration of the loop, we should use the precloned values for
-    // PHI nodes.  Insert associations now.
-    typedef DenseMap<const Value*, Value*> ValueMapTy;
+    // first iteration should use precloned values in place of phi nodes
+    // typedef DenseMap<const Value*, Value*> ValueMapTy;
     ValueToValueMapTy LastValueMap;
     std::vector<PHINode*> OrigPHINode;
     for (BasicBlock::iterator I = Header->begin(); isa<PHINode>(I); ++I) {
@@ -253,80 +286,110 @@ bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
     Headers.push_back(Header);
     Latches.push_back(LatchBlock);
 
-    for (unsigned It = 1; It != Count; ++It) {
-        char SuffixBuffer[100];
-        sprintf(SuffixBuffer, ".%d", It);
+    // The current on-the-fly SSA update requires blocks to be processed in
+    // reverse postorder so that LastValueMap contains the correct value at each
+    // exit.
+    LoopBlocksDFS DFS(L);
+    DFS.perform(LI);
 
-        std::vector<BasicBlock*> NewBlocks;
+    // Stash the DFS iterators before adding blocks to the loop.
+    LoopBlocksDFS::RPOIterator BlockBegin = DFS.beginRPO();
+    LoopBlocksDFS::RPOIterator BlockEnd = DFS.endRPO();
 
-        for (std::vector<BasicBlock*>::iterator BB = LoopBlocks.begin(),
-                 E = LoopBlocks.end(); BB != E; ++BB) {
-            ValueToValueMapTy ValueMap;
-            BasicBlock *New = CloneBasicBlock(*BB, ValueMap, SuffixBuffer);
-            Header->getParent()->getBasicBlockList().push_back(New);
+    std::vector<BasicBlock*> UnrolledLoopBlocks = L->getBlocks();
 
-            // Loop over all of the PHI nodes in the block, changing them to use the
-            // incoming values from the previous block.
-            if (*BB == Header)
-                for (unsigned i = 0, e = OrigPHINode.size(); i != e; ++i) {
-                    PHINode *NewPHI = cast<PHINode>(ValueMap[OrigPHINode[i]]);
-                    Value *InVal = NewPHI->getIncomingValueForBlock(LatchBlock);
-                    if (Instruction *InValI = dyn_cast<Instruction>(InVal))
-                        if (It > 1 && L->contains(InValI->getParent()))
-                            InVal = LastValueMap[InValI];
-                    ValueMap[OrigPHINode[i]] = InVal;
-                    New->getInstList().erase(NewPHI);
-                }
+  for (unsigned It = 1; It != Count; ++It) {
+    std::vector<BasicBlock*> NewBlocks;
+    SmallDenseMap<const Loop *, Loop *, 4> NewLoops;
+    NewLoops[L] = L;
 
-            // Update our running map of newest clones
-            LastValueMap[*BB] = New;
-            for (ValueToValueMapTy::iterator VI = ValueMap.begin(), VE = ValueMap.end();
-                 VI != VE; ++VI)
-                LastValueMap[VI->first] = VI->second;
+    for (LoopBlocksDFS::RPOIterator BB = BlockBegin; BB != BlockEnd; ++BB) {
+      ValueToValueMapTy VMap;
+      BasicBlock *New = CloneBasicBlock(*BB, VMap, "." + Twine(It));
+      Header->getParent()->getBasicBlockList().push_back(New);
 
-            L->addBasicBlockToLoop(New, *LI);
+      assert((*BB != Header || LI->getLoopFor(*BB) == L) &&
+             "Header should not be in a sub-loop");
+      // Tell LI about New.
+      const Loop *OldLoop = addClonedBlockToLoopInfo(*BB, New, LI, NewLoops);
+      if (OldLoop) {
+        // LoopsToSimplify.insert(NewLoops[OldLoop]);
 
-            // Add phi entries for newly created values to all exit blocks except
-            // the successor of the latch block.  The successor of the exit block will
-            // be updated specially after unrolling all the way.
-            if (*BB != LatchBlock)
-                for (Value::use_iterator UI = (*BB)->use_begin(), UE = (*BB)->use_end();
-                     UI != UE;) {
-                    Instruction *UseInst = cast<Instruction>(*UI);
-                    ++UI;
-                    if (isa<PHINode>(UseInst) && !L->contains(UseInst->getParent())) {
-                        PHINode *phi = cast<PHINode>(UseInst);
-                        Value *Incoming = phi->getIncomingValueForBlock(*BB);
-                        phi->addIncoming(Incoming, New);
-                    }
-                }
+        // Forget the old loop, since its inputs may have changed.
+        if (SE)
+          SE->forgetLoop(OldLoop);
+      }
 
-            // Keep track of new headers and latches as we create them, so that
-            // we can insert the proper branches later.
-            if (*BB == Header)
-                Headers.push_back(New);
-            if (*BB == LatchBlock) {
-                Latches.push_back(New);
-
-                // Also, clear out the new latch's back edge so that it doesn't look
-                // like a new loop, so that it's amenable to being merged with adjacent
-                // blocks later on.
-                TerminatorInst *Term = New->getTerminator();
-                assert(L->contains(Term->getSuccessor(!ContinueOnTrue)));
-                assert(Term->getSuccessor(ContinueOnTrue) == LoopExit);
-                Term->setSuccessor(!ContinueOnTrue, NULL);
-            }
-
-            NewBlocks.push_back(New);
+      if (*BB == Header)
+        // Loop over all of the PHI nodes in the block, changing them to use
+        // the incoming values from the previous block.
+        for (PHINode *OrigPHI : OrigPHINode) {
+          PHINode *NewPHI = cast<PHINode>(VMap[OrigPHI]);
+          Value *InVal = NewPHI->getIncomingValueForBlock(LatchBlock);
+          if (Instruction *InValI = dyn_cast<Instruction>(InVal))
+            if (It > 1 && L->contains(InValI))
+              InVal = LastValueMap[InValI];
+          VMap[OrigPHI] = InVal;
+          New->getInstList().erase(NewPHI);
         }
 
-        // Remap all instructions in the most recent iteration
-        for (BasicBlock *NewBlock : NewBlocks) {
-            for (Instruction &I : *NewBlock) {
-                remapInstruction(&I, LastValueMap);
-            }
+      // Update our running map of newest clones
+      LastValueMap[*BB] = New;
+      for (ValueToValueMapTy::iterator VI = VMap.begin(), VE = VMap.end();
+           VI != VE; ++VI)
+        LastValueMap[VI->first] = VI->second;
+
+      // Add phi entries for newly created values to all exit blocks.
+      for (BasicBlock *Succ : successors(*BB)) {
+        if (L->contains(Succ))
+          continue;
+        for (BasicBlock::iterator BBI = Succ->begin();
+             PHINode *phi = dyn_cast<PHINode>(BBI); ++BBI) {
+          Value *Incoming = phi->getIncomingValueForBlock(*BB);
+          ValueToValueMapTy::iterator It = LastValueMap.find(Incoming);
+          if (It != LastValueMap.end())
+            Incoming = It->second;
+          phi->addIncoming(Incoming, New);
         }
+      }
+      // Keep track of new headers and latches as we create them, so that
+      // we can insert the proper branches later.
+      if (*BB == Header)
+        Headers.push_back(New);
+      if (*BB == LatchBlock)
+        Latches.push_back(New);
+
+      NewBlocks.push_back(New);
+      UnrolledLoopBlocks.push_back(New);
+
+      // Update DomTree: since we just copy the loop body, and each copy has a
+      // dedicated entry block (copy of the header block), this header's copy
+      // dominates all copied blocks. That means, dominance relations in the
+      // copied body are the same as in the original body.
+      if (DT) {
+        if (*BB == Header)
+          DT->addNewBlock(New, Latches[It - 1]);
+        else {
+          auto BBDomNode = DT->getNode(*BB);
+          auto BBIDom = BBDomNode->getIDom();
+          BasicBlock *OriginalBBIDom = BBIDom->getBlock();
+          DT->addNewBlock(
+              New, cast<BasicBlock>(LastValueMap[cast<Value>(OriginalBBIDom)]));
+        }
+      }
     }
+
+    // Remap all instructions in the most recent iteration
+    for (BasicBlock *NewBlock : NewBlocks) {
+      for (Instruction &I : *NewBlock) {
+        ::remapInstruction(&I, LastValueMap);
+        if (auto *II = dyn_cast<IntrinsicInst>(&I))
+          if (II->getIntrinsicID() == Intrinsic::assume)
+            AC->registerAssumption(II);
+      }
+    }
+  }
+ // end for Count
 
     // The latch block exits the loop.  If there are any PHI nodes in the
     // successor blocks, update them to use the appropriate values computed as the
@@ -393,26 +456,50 @@ bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
             // iteration.
             Term->setSuccessor(!ContinueOnTrue, Dest);
         } else {
+            if (Dest != LoopExit) {
+                BasicBlock *BB = Latches[i];
+                for (BasicBlock *Succ: successors(BB)) {
+                    if (Succ == Headers[i])
+                        continue;
+                    for (BasicBlock::iterator BBI = Succ->begin();
+                         PHINode *Phi = dyn_cast<PHINode>(BBI); ++BBI) {
+                        Phi->removeIncomingValue(BB, false);
+                    }
+                }
+            }
+
             BranchInst::Create(Dest, Term);
             Term->eraseFromParent();
-            // Merge adjacent basic blocks, if possible.
-            if (BasicBlock *Fold = foldBlockIntoPredecessor(Dest, LI)) {
+        }
+    }
+
+    errs() << "\nmerging:\n";
+
+    // try to merge adjacent blocks
+    SmallPtrSet<Loop *, 4> ForgottenLoops;
+    for (BasicBlock *Latch : Latches) {
+        BranchInst *Term = cast<BranchInst>(Latch->getTerminator());
+        if (Term->isUnconditional()) {
+            BasicBlock *Dest = Term->getSuccessor(0);
+
+            if (BasicBlock *Fold =
+                foldBlockIntoPredecessor(Dest, LI, SE, ForgottenLoops, DT)) {
+                // Dest has been folded into Fold. Update our worklists accordingly.
                 std::replace(Latches.begin(), Latches.end(), Dest, Fold);
-                std::replace(Headers.begin(), Headers.end(), Dest, Fold);
+                UnrolledLoopBlocks.erase(std::remove(UnrolledLoopBlocks.begin(),
+                                                     UnrolledLoopBlocks.end(), Dest),
+                                         UnrolledLoopBlocks.end());
             }
         }
     }
 
     errs() << "\ncode cleanup:\n";
 
-    // At this point, the code is well formed.  We now do a quick sweep over the
-    // inserted code, doing constant propagation and dead code elimination as we
-    // go.
+    // code cleanup
     const DataLayout &DL = Header->getModule()->getDataLayout();
     const std::vector<BasicBlock*> &NewLoopBlocks = L->getBlocks();
 
     for (BasicBlock *BB : NewLoopBlocks) {
-        errs() << "before:\n";
         BB->dump();
 
         for (BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E; ) {
@@ -431,13 +518,14 @@ bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
             }
             // remove dead instructions
             if (isInstructionTriviallyDead(Inst)) {
-                errs() << "removing dead inst:\n";
-                Inst->dump();
+                // errs() << "removing dead inst:\n";
+                // Inst->dump();
 
                 BB->getInstList().erase(Inst);
             }
         }
-        errs() << "\nafter:\n";
+
+        errs() << "after:\n";
         BB->dump();
         errs() << "\n";
     }
