@@ -7,6 +7,7 @@
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Analysis/CodeMetrics.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Transforms/Utils/LoopUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/Local.h"
@@ -402,22 +403,44 @@ bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
         }
     }
 
+    errs() << "\ncode cleanup:\n";
+
     // At this point, the code is well formed.  We now do a quick sweep over the
     // inserted code, doing constant propagation and dead code elimination as we
     // go.
+    const DataLayout &DL = Header->getModule()->getDataLayout();
     const std::vector<BasicBlock*> &NewLoopBlocks = L->getBlocks();
-    for (std::vector<BasicBlock*>::const_iterator BB = NewLoopBlocks.begin(),
-             BBE = NewLoopBlocks.end(); BB != BBE; ++BB)
-        for (BasicBlock::iterator I = (*BB)->begin(), E = (*BB)->end(); I != E; ) {
+
+    for (BasicBlock *BB : NewLoopBlocks) {
+        errs() << "before:\n";
+        BB->dump();
+
+        for (BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E; ) {
             Instruction *Inst = &*I++;
 
-            if (isInstructionTriviallyDead(Inst))
-                (*BB)->getInstList().erase(Inst);
-            // else if (Constant *C = ConstantFoldInstruction(Inst)) {
-            //     Inst->replaceAllUsesWith(C);
-            //     (*BB)->getInstList().erase(Inst);
-            // }
+            // constant folding
+            if (Value *V = SimplifyInstruction(Inst, DL, nullptr, DT, AC)) {
+                if (LI->replacementPreservesLCSSAForm(Inst, V)) {
+                    // errs() << "replacing\n";
+                    // Inst->dump();
+                    // errs() << "with\n  ";
+                    // V->dump();
+
+                    Inst->replaceAllUsesWith(V);
+                }
+            }
+            // remove dead instructions
+            if (isInstructionTriviallyDead(Inst)) {
+                errs() << "removing dead inst:\n";
+                Inst->dump();
+
+                BB->getInstList().erase(Inst);
+            }
         }
+        errs() << "\nafter:\n";
+        BB->dump();
+        errs() << "\n";
+    }
 
     return true;
 }
