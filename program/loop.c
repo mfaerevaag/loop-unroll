@@ -3,34 +3,35 @@
 
 #include "helper.h"
 
-void MAGIC_FUNC (int *a, int *b)
+int MAGIC_FUNC ()
 {
-    int i, x, y;
+    int i, x;
 
     x = 0;
 
-    for (i = 0; i < 10; i++) {
+    for (i = 1; i <= 3; i++) {
         x += i;
     }
 
-    *b = x;
+    return x;
 }
 
 int main(void)
 {
     uint64_t t0, t1;
-    int *a, *b;
+    int ret;
+    /* int *a, *b; */
 
-    a = (int *) malloc(sizeof(int));
-    b = (int *) malloc(sizeof(int));
+    /* a = (int *) malloc(sizeof(int)); */
+    /* b = (int *) malloc(sizeof(int)); */
 
-    *a = 10;
+    /* *a = 10; */
 
     t0 = rdtsc();
-    MAGIC_FUNC (a, b);
+    ret = MAGIC_FUNC ();
     t1 = rdtsc();
 
-    printf("result: %d\n", *b);
+    printf("result: %d\n", ret);
     printf("time: %zu\n", t1 - t0);
 
     return 0;
