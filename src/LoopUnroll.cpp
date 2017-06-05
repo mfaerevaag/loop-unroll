@@ -228,8 +228,8 @@ bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
 
     // enforce the threshold
     if (Threshold > 0) {
-        uint64_t Size = (uint64_t) LoopSize *Count;
-        if (TripCount != 1 && Size > Threshold) {
+        uint64_t Size = (uint64_t) LoopSize * Count;
+        if (Size > Threshold) {
             errs() << "skipping: too large to unroll (threshold = "
                    << Threshold << ")\n";
             return false;
