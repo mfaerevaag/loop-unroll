@@ -250,6 +250,9 @@ bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
             (unsigned) GreatestCommonDivisor64(Count, TripMultiple);
     }
 
+    // check valid count
+    assert(BreakoutTrip == 0);  // TODO
+
     // print some info
     if (CompletelyUnroll) {
         errs() << "COMPLETELY unrolling\n";
