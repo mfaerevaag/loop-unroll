@@ -31,7 +31,7 @@ using namespace llvm;
 
 // command line options
 
-static cl::opt<unsigned> UnrollThreshold ("my-unroll-threshold", cl::init(100), cl::Hidden,
+static cl::opt<unsigned> UnrollThreshold ("my-unroll-threshold", cl::init(0), cl::Hidden,
                                           cl::desc("The cut-off point for automatic loop unrolling"));
 
 static cl::opt<unsigned> UnrollCount ("my-unroll-count", cl::init(0), cl::Hidden,
