@@ -102,7 +102,7 @@ static BasicBlock *foldBlockIntoPredecessor(BasicBlock *BB, LoopInfo *LI,
     if (!Pred) return nullptr;
     if (Pred->getTerminator()->getNumSuccessors() != 1) return nullptr;
 
-    errs() << "merging: " << *BB << "into: " << *Pred;
+    // errs() << "merging: " << *BB << "into: " << *Pred;
 
     // Resolve any PHI nodes at the start of the block.  They are all
     // guaranteed to have exactly one entry if they exist, unless there are
@@ -512,14 +512,14 @@ bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
         }
     }
 
-    errs() << "\ncode cleanup:\n";
+    // errs() << "\ncode cleanup:\n";
 
     // code cleanup
     const DataLayout &DL = Header->getModule()->getDataLayout();
     const std::vector<BasicBlock*> &NewLoopBlocks = L->getBlocks();
 
     for (BasicBlock *BB : NewLoopBlocks) {
-        BB->dump();
+        // BB->dump();
 
         for (BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E; ) {
             Instruction *Inst = &*I++;
@@ -544,9 +544,9 @@ bool unrollLoop(Loop *L, unsigned Count, unsigned Threshold,
             }
         }
 
-        errs() << "after:\n";
-        BB->dump();
-        errs() << "\n";
+        // errs() << "after:\n";
+        // BB->dump();
+        // errs() << "\n";
     }
 
     return true;
@@ -580,7 +580,6 @@ bool LoopUnroll::runOnLoop(Loop *L, LPPassManager &LPM)
 
     // try to unroll
     if (!unrollLoop(L, UnrollCount, UnrollThreshold, LI, &DT, SE, &AC, TTI)) {
-        errs() << "failed...\n";
         return false;
     }
 
