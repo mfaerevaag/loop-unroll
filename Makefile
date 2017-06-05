@@ -7,7 +7,7 @@ PDIR = program
 
 TARGET = CompArch
 PASSNAME ?= my-loop-unroll
-PASSARGS ?=
+PASSCOUNT ?= 0
 
 PROG ?= loop-static
 PROGBASE ?= ${PROG}-base
@@ -49,11 +49,11 @@ ${PROGBASE}.ll: ${PROG}.ll ${ODIR}/${TARGET}
 
 # optimize
 ${PROGOPT}.ll: ${PROGBASE}.ll ${ODIR}/${TARGET}
-	opt -S -load ${ODIR}/lib${TARGET}.so -${PASSNAME} ${PASSARGS} -o $@ $< > /dev/null
+	opt -S -load ${ODIR}/lib${TARGET}.so -${PASSNAME} -my-unroll-count ${PASSCOUNT} -o $@ $< > /dev/null
 
 # best
 ${PROGBEST}.ll: ${PROGBASE}.ll ${ODIR}/${TARGET}
-	opt -S -loop-unroll -unroll-threshold 99999999 -o $@ $< > /dev/null
+	opt -S -loop-unroll -unroll-count ${PASSCOUNT} -unroll-threshold 99999999 -o $@ $< > /dev/null
 
 # assemble
 %.s: %.ll
