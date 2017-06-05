@@ -53,7 +53,7 @@ ${PROGOPT}.ll: ${PROGBASE}.ll ${ODIR}/${TARGET}
 
 # best
 ${PROGBEST}.ll: ${PROGBASE}.ll ${ODIR}/${TARGET}
-	opt -S -loop-unroll -o $@ $< > /dev/null
+	opt -S -loop-unroll -unroll-threshold 99999999 -o $@ $< > /dev/null
 
 # assemble
 %.s: %.ll
