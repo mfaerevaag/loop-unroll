@@ -1,18 +1,24 @@
 #!/bin/bash
 
 iter=100
+count=100
 prog=""
 
 benchmark() {
-    # status message
-    s="benchmarking '${prog}' ..."
-
     prog_base="${prog}-base"
     prog_opt="${prog}-opt"
     prog_best="${prog}-best"
 
-    # TODO
-    prog_cur=$prog_opt
+    declare -a prog_all=("${prog_base}" "${prog_opt}" "${prog_best}")
+    # declare -a prog_all=("${prog_best}")
+
+    # make
+    if ! err=$(make cleanprog prog PROG=${prog} PASSCOUNT=${count} 2>&1)
+    then
+        echo "initial make failed" 1>&2
+        echo $err 1>&2
+        exit 1
+    fi
 
     # expected result from all programs
     expected_result=$(./${prog_base}.out | ag -o 'result: [\d]+' | awk '{print $2}')
@@ -20,49 +26,83 @@ benchmark() {
     # total time
     tot=0
 
-    # go
-    for (( i = 1; i <= $iter ; i++ ))
+    # for each program optimization
+    prog_i=1
+    for prog_cur in "${prog_all[@]}"
     do
-        # run prog
-        output=$(./${prog_cur}.out)
 
-        # get result
-        result=$(echo ${output} | ag -o 'result: [\d]+' | awk '{print $2}')
-        if [ ! "$result" == "$expected_result" ]
-        then
-            echo -ne "\rexpected result '${expected_result}', but got '${result}'" 1>&2
-            exit 1
-        fi
+        # set and clear logfile
+        logfile="${prog_cur}.csv"
+        echo -ne "" > $logfile
 
-        # get time
-        time=$(echo ${output} | ag -o 'time: [\d]+' | awk '{print $2}')
-        # add to total
-        tot=$(( $tot + $time ))
+        # for each unroll count
+        for (( c = 1; c <= $count ; c++ ))
+        do
 
-        # print status line with percent
-        p=$(( $i * 100 / $iter))
-        echo -ne "${s} ${i}/${iter} (${p}%) \r" 1>&2
-    done;
+            # make
+            if ! err=$(make ${prog_cur}.out PROG=${prog} PASSCOUNT=${c} 2>&1)
+            then
+                # echo "make failed for count ${c}" 1>&2
+                # echo $err 1>&2
+                continue;
+            fi
 
-    # end status line
-    echo -ne '\n' 1>&2
+            output=""
+            tot=0
 
-    # calculate average
-    avg=$(( $tot / $iter ))
+            # get mean running time
+            for (( i = 1; i <= $iter ; i++ ))
+            do
+                # check if base
+                # TODO
 
-    # calculate code size
-    loc=$(wc -l < ${prog_cur}.s)
+                # run prog
+                output=$(./${prog_cur}.out)
 
-    echo "prog,mean,loc"
-    echo "${prog},${avg},${loc}"
+                # get time
+                time=$(echo ${output} | ag -o 'time: [\d]+' | awk '{print $2}')
+                # add to total
+                tot=$(( $tot + $time ))
+
+                # print status line with percent
+                # p=$(( $i * 100 / $iter * $prog_count))
+                s="benchmarking '${prog_cur}' ..."
+                echo -ne "\r$(tput el)${s} i: $i / $iter count: $c / $count prog: ${prog_i} / ${#prog_all[@]}" 1>&2
+            done
+
+            # check for correct result
+            result=$(echo ${output} | ag -o 'result: [\d]+' | awk '{print $2}')
+            if [ ! "$result" == "$expected_result" ]
+            then
+                echo -ne "\rexpected result '${expected_result}', but got '${result}'" 1>&2
+                exit 1
+            fi
+
+            # calculate average
+            avg=$(( $tot / $iter ))
+
+            # calculate code size
+            loc=$(wc -l < ${prog_cur}.s)
+
+            # write result
+            # echo -ne "\n" 1>&2 # end status line
+            echo "${c},${avg},${loc}" >> $logfile
+
+        done
+
+        prog_i=$(( prog_i + 1 ))
+    done
 }
 
 # Option parsing
-while getopts n:p: OPT
+while getopts i:c:p: OPT
 do
     case "$OPT" in
-        n)
+        i)
             iter=$OPTARG
+            ;;
+        c)
+            count=$OPTARG
             ;;
         p)
             prog=$OPTARG
