@@ -1,11 +1,21 @@
 #!/bin/bash
 
-iter=10
-command=""
+iter=100
+prog=""
 
-benhmark() {
+benchmark() {
     # status message
-    s="benchmarking ${command} ..."
+    s="benchmarking '${prog}' ..."
+
+    prog_base="${prog}-base"
+    prog_opt="${prog}-opt"
+    prog_best="${prog}-best"
+
+    # TODO
+    prog_cur=$prog_opt
+
+    # expected result from all programs
+    expected_result=$(./${prog_base}.out | ag -o 'result: [\d]+' | awk '{print $2}')
 
     # total time
     tot=0
@@ -13,14 +23,25 @@ benhmark() {
     # go
     for (( i = 1; i <= $iter ; i++ ))
     do
-        # run command
-        clock=$(${command})
+        # run prog
+        output=$(./${prog_cur}.out)
+
+        # get result
+        result=$(echo ${output} | ag -o 'result: [\d]+' | awk '{print $2}')
+        if [ ! "$result" == "$expected_result" ]
+        then
+            echo -ne "\rexpected result '${expected_result}', but got '${result}'" 1>&2
+            exit 1
+        fi
+
+        # get time
+        time=$(echo ${output} | ag -o 'time: [\d]+' | awk '{print $2}')
         # add to total
-        tot=$(( $tot + $clock ))
+        tot=$(( $tot + $time ))
 
         # print status line with percent
         p=$(( $i * 100 / $iter))
-        echo -ne "${s} (${p}%) \r" 1>&2
+        echo -ne "${s} ${i}/${iter} (${p}%) \r" 1>&2
     done;
 
     # end status line
@@ -29,19 +50,23 @@ benhmark() {
     # calculate average
     avg=$(( $tot / $iter ))
 
-    echo "mean: ${avg}"
+    # calculate code size
+    loc=$(wc -l < ${prog_cur}.s)
+
+    echo "prog,mean,loc"
+    echo "${prog},${avg},${loc}"
 }
 
 # Option parsing
-while getopts n:c: OPT
+while getopts n:p: OPT
 do
     case "$OPT" in
         n)
             iter=$OPTARG
             ;;
-        c)
-            command=$OPTARG
-            benhmark
+        p)
+            prog=$OPTARG
+            benchmark
             ;;
         \?)
             echo 'no arguments given'
