@@ -9,7 +9,7 @@ int MAGIC_FUNC ()
 
     x = 0;
 
-    for (i = 1; i <= 3; i++) {
+    for (i = 1; i <= MAGIC_TRIP; i++) {
         x += i;
     }
 
@@ -20,12 +20,6 @@ int main(void)
 {
     uint64_t t0, t1;
     int ret;
-    /* int *a, *b; */
-
-    /* a = (int *) malloc(sizeof(int)); */
-    /* b = (int *) malloc(sizeof(int)); */
-
-    /* *a = 10; */
 
     t0 = rdtsc();
     ret = MAGIC_FUNC ();
