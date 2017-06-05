@@ -6,20 +6,22 @@ ODIR = build
 PDIR = program
 
 TARGET = CompArch
-PASSNAME = my-loop-unroll
+PASSNAME ?= my-loop-unroll
+PASSARGS ?=
 
-PROG ?= loop
+PROG ?= loop-static
 PROGBASE ?= ${PROG}-base
 PROGOPT ?= ${PROG}-opt
 PROGBEST ?= ${PROG}-best
-PROGFUNC = magic
+PROGFUNC ?= magic
+PROGTRIP ?= 100
 
 export
 
 
 .PHONY: all prog clean cleanprog
 
-.SECONDARY: *.s
+.SECONDARY: ${PROG}.s ${PROGBASE}.s ${PROGOPT}.s ${PROGBEST}.s
 
 all: ${ODIR}/${TARGET}
 
@@ -39,7 +41,7 @@ ${ODIR}/${TARGET}: ${ODIR} ${ODIR}/Makefile
 
 # bytecode
 %.ll: ${PDIR}/%.c
-	${CC} -DMAGIC_FUNC=${PROGFUNC} -S -emit-llvm -o $@ $<
+	${CC} -DMAGIC_FUNC=${PROGFUNC} -DMAGIC_TRIP=${PROGTRIP} -S -emit-llvm -o $@ $<
 
 # base
 ${PROGBASE}.ll: ${PROG}.ll ${ODIR}/${TARGET}
@@ -47,7 +49,7 @@ ${PROGBASE}.ll: ${PROG}.ll ${ODIR}/${TARGET}
 
 # optimize
 ${PROGOPT}.ll: ${PROGBASE}.ll ${ODIR}/${TARGET}
-	opt -S -load ${ODIR}/lib${TARGET}.so -${PASSNAME} -o $@ $< > /dev/null
+	opt -S -load ${ODIR}/lib${TARGET}.so -${PASSNAME} ${PASSARGS} -o $@ $< > /dev/null
 
 # best
 ${PROGBEST}.ll: ${PROGBASE}.ll ${ODIR}/${TARGET}
