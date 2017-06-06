@@ -35,36 +35,31 @@ total.summary <- ddply(total, .(Machine, count), summarise
                        ## ,time.sd = sd(time),
                        )
 
-# limit y-axis to shortest of each  machines max (or maybe not?)
-## minMax <- min(c(
-##     max(subset(total.summary, Machine == "CLR")$time.mean),
-##     max(subset(total.summary, Machine == "JVM")$time.mean),
-##     max(subset(total.summary, Machine == "Matisse")$time.mean)
-##     ))
-
-# set tex file
-## tikz(paste0(prog, ".tex"))
+# set ouput file
+tikz(paste0(prog, "-time.tex"))
 
 # plot it
+
+## mean time
+## pdf(paste0(prog, "-time.pdf"))
+tikz(paste0(prog, "-time.tex"))
 qplot(count, time.mean, data = total.summary,
-      geom = "line", colour = Machine,
+      colour = Machine,
       xlim = c(0,max(total.summary$count)),
       ylim = c(0, max(total.summary$time)),
-      #ylim = c(0, minMax),
       xlab = "Unroll count",
       ylab = "Mean time"
-      )
+      ) + geom_line()
+dev.off()
 
-
-## qplot(count, time.mean, data = total.summary,
-##       geom = "line", colour = Machine,
-##       xlim = c(0,max(total.summary$count)),
-##       ylim = c(0, max(total.summary$time)),
-##       ylab = "Mean-time"
-##       #ylim = c(0, minMax),
-##       ) + scale_x_log10(breaks = trans_breaks("log10", function(x) 10^x),
-##                         labels = trans_format("log10", math_format(10^.x)))
-
-
-# magic
-## dev.off()
+## loc
+## pdf(paste0(prog, "-loc.pdf"))
+tikz(paste0(prog, "-loc.tex"))
+qplot(count, loc, data = total,
+      colour = Machine,
+      xlim = c(0,max(total$count)),
+      ylim = c(0, max(total$time)),
+      xlab = "Unroll count",
+      ylab = "LOC"
+      ) + geom_line()
+dev.off()
