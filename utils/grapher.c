@@ -4,7 +4,12 @@ library(data.table)
 library(plyr)
 library(scales)
 library(ggplot2)
-require(tikzDevice)
+library(ggthemr)
+## require(tikzDevice)
+
+## ggplot2 theme
+## https://github.com/cttobin/ggthemr
+ggthemr('flat dark')
 
 options(echo = TRUE)
 args <- commandArgs(trailingOnly = TRUE)
