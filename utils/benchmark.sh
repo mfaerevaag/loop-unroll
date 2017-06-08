@@ -33,7 +33,7 @@ benchmark() {
 
         # set and clear logfile
         logfile="${prog_cur}.csv"
-        echo -ne "" > $logfile
+        echo "count,time,loc" > $logfile
 
         # for each unroll count
         for (( c = 1; c <= $count ; c++ ))
