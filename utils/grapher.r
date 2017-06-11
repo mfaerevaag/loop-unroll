@@ -9,7 +9,7 @@ library(ggthemr)
 
 ## ggplot2 theme
 ## https://github.com/cttobin/ggthemr
-ggthemr('flat dark')
+ggthemr('flat')
 
 options(echo = TRUE)
 args <- commandArgs(trailingOnly = TRUE)
@@ -53,7 +53,7 @@ qplot(count, time.mean, data = total.summary,
       xlim = c(0, max(total.summary$count)),
       ylim = c(0, max(total.summary$time)),
       xlab = "Unroll count",
-      ylab = "Mean time"
+      ylab = "Mean cycles"
       ) + geom_line()
 dev.off()
 
